@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -27,9 +27,52 @@ struct Args {
     #[arg(long)]
     dry_run: bool,
 
-    /// Archive repos older than N years
-    #[arg(long, default_value = "8")]
-    years: u32,
+    /// Archive repos older than this age (e.g., "8y" for 8 years, "6m" for 6 months)
+    #[arg(long, default_value = "8y")]
+    age: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Age {
+    Months(u32),
+    Years(u32),
+}
+
+impl Age {
+    fn parse(s: &str) -> Result<Self> {
+        let s = s.trim().to_lowercase();
+        if s.is_empty() {
+            anyhow::bail!("Age cannot be empty");
+        }
+
+        let (num_str, unit) = s.split_at(s.len() - 1);
+        let num: u32 = num_str
+            .parse()
+            .with_context(|| format!("Invalid number in age: {num_str}"))?;
+
+        match unit {
+            "y" => Ok(Self::Years(num)),
+            "m" => Ok(Self::Months(num)),
+            _ => anyhow::bail!("Invalid age unit '{unit}'. Use 'y' for years or 'm' for months (e.g., '8y', '6m')"),
+        }
+    }
+
+    fn cutoff_date(self) -> NaiveDate {
+        let today = Utc::now().date_naive();
+        match self {
+            Self::Years(y) => today
+                .with_year(today.year() - y as i32)
+                .unwrap_or(today),
+            Self::Months(m) => today - chrono::Months::new(m),
+        }
+    }
+
+    fn display(self) -> String {
+        match self {
+            Self::Years(y) => format!("{y} year{}", if y == 1 { "" } else { "s" }),
+            Self::Months(m) => format!("{m} month{}", if m == 1 { "" } else { "s" }),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -164,9 +207,8 @@ enum ArchiveResult {
     Failed(usize, String),
 }
 
-fn fetch_repos(years: u32) -> Result<Vec<Repo>> {
-    let cutoff_year = Utc::now().format("%Y").to_string().parse::<i32>()? - years as i32;
-    let cutoff_date = format!("{cutoff_year}-01-01");
+fn fetch_repos(age: Age) -> Result<Vec<Repo>> {
+    let cutoff = age.cutoff_date();
 
     let output = Command::new("gh")
         .args([
@@ -190,7 +232,6 @@ fn fetch_repos(years: u32) -> Result<Vec<Repo>> {
     }
 
     let repos: Vec<Repo> = serde_json::from_slice(&output.stdout)?;
-    let cutoff = NaiveDate::parse_from_str(&cutoff_date, "%Y-%m-%d")?;
 
     let mut filtered: Vec<Repo> = repos
         .into_iter()
@@ -208,12 +249,13 @@ fn fetch_repos(years: u32) -> Result<Vec<Repo>> {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    let age = Age::parse(&args.age)?;
 
-    println!("Finding repos older than {} years...", args.years);
-    let repos = fetch_repos(args.years)?;
+    println!("Finding repos older than {}...", age.display());
+    let repos = fetch_repos(age)?;
 
     if repos.is_empty() {
-        println!("No repos found older than {} years.", args.years);
+        println!("No repos found older than {}.", age.display());
         return Ok(());
     }
 

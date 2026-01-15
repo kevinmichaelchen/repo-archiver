@@ -15,7 +15,10 @@ cargo run -- --dry-run
 cargo run
 
 # Archive repos older than 5 years
-cargo run -- --years 5
+cargo run -- --age 5y
+
+# Archive repos older than 6 months
+cargo run -- --age 6m
 ```
 
 ## Controls
