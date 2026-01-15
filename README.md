@@ -26,9 +26,10 @@ cargo run -- --age 6m
 ### Age picker (if --age not provided)
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `Enter` | Confirm selection |
+| `↑` / `k` | Increase value |
+| `↓` / `j` | Decrease value |
+| `←` / `→` / `Tab` | Toggle months/years |
+| `Enter` | Confirm |
 | `q` / `Esc` | Quit |
 
 ### Selection mode

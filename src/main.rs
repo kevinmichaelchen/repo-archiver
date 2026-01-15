@@ -75,14 +75,75 @@ impl Age {
         }
     }
 
-    const PRESETS: &[Age] = &[
-        Age::Months(3),
-        Age::Months(6),
-        Age::Years(1),
-        Age::Years(2),
-        Age::Years(5),
-        Age::Years(8),
-    ];
+    fn cutoff_display(self) -> String {
+        self.cutoff_date().format("%b %d, %Y").to_string()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum AgeUnit {
+    Months,
+    Years,
+}
+
+#[derive(Clone, Copy)]
+struct AgePicker {
+    value: u32,
+    unit: AgeUnit,
+}
+
+impl AgePicker {
+    fn new() -> Self {
+        Self {
+            value: 2,
+            unit: AgeUnit::Years,
+        }
+    }
+
+    fn increment(&mut self) {
+        let max = match self.unit {
+            AgeUnit::Months => 11,
+            AgeUnit::Years => 10,
+        };
+        if self.value < max {
+            self.value += 1;
+        }
+    }
+
+    fn decrement(&mut self) {
+        if self.value > 1 {
+            self.value -= 1;
+        }
+    }
+
+    fn toggle_unit(&mut self) {
+        self.unit = match self.unit {
+            AgeUnit::Months => AgeUnit::Years,
+            AgeUnit::Years => AgeUnit::Months,
+        };
+        // Clamp value to valid range
+        let max = match self.unit {
+            AgeUnit::Months => 11,
+            AgeUnit::Years => 10,
+        };
+        if self.value > max {
+            self.value = max;
+        }
+    }
+
+    fn to_age(self) -> Age {
+        match self.unit {
+            AgeUnit::Months => Age::Months(self.value),
+            AgeUnit::Years => Age::Years(self.value),
+        }
+    }
+
+    const fn unit_str(self) -> &'static str {
+        match self.unit {
+            AgeUnit::Months => "months",
+            AgeUnit::Years => "years",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -322,15 +383,17 @@ fn main() -> Result<()> {
 }
 
 fn run_age_picker<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<Age>> {
-    let mut selected: usize = 3; // Default to 2 years
+    let mut picker = AgePicker::new();
 
     loop {
+        let age = picker.to_age();
+
         terminal.draw(|f| {
             let area = f.area();
 
             // Center the picker
-            let picker_width = 40;
-            let picker_height = (Age::PRESETS.len() + 4) as u16;
+            let picker_width = 44;
+            let picker_height = 9;
             let picker_area = Rect {
                 x: area.width.saturating_sub(picker_width) / 2,
                 y: area.height.saturating_sub(picker_height) / 2,
@@ -338,36 +401,45 @@ fn run_age_picker<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<Age>>
                 height: picker_height.min(area.height),
             };
 
-            let mut lines = vec![
-                Line::from("Select minimum repo age:").centered(),
+            // Build the stepper display
+            let value_display = Line::from(vec![
+                Span::styled("  ◀  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" {} ", picker.value),
+                    Style::default().fg(Color::Cyan).bold(),
+                ),
+                Span::styled(
+                    format!(" {} ", picker.unit_str()),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled("  ▶  ", Style::default().fg(Color::DarkGray)),
+            ]);
+
+            let lines = vec![
                 Line::from(""),
-            ];
-
-            for (i, age) in Age::PRESETS.iter().enumerate() {
-                let prefix = if i == selected { "▶ " } else { "  " };
-                let style = if i == selected {
-                    Style::default().fg(Color::Cyan).bold()
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-                lines.push(Line::from(format!("{prefix}{}", age.display())).style(style).centered());
-            }
-
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from("↑/↓: Select | Enter: Confirm | q: Quit")
+                Line::from("Archive repos older than:")
+                    .style(Style::default().fg(Color::White))
+                    .centered(),
+                Line::from(""),
+                value_display.centered(),
+                Line::from(""),
+                Line::from(format!("Created before: {}", age.cutoff_display()))
+                    .style(Style::default().fg(Color::Yellow))
+                    .centered(),
+                Line::from(""),
+                Line::from("↑/↓: Adjust | ←/→: Unit | Enter: Confirm | q: Quit")
                     .style(Style::default().fg(Color::DarkGray))
                     .centered(),
-            );
+            ];
 
-            let picker = Paragraph::new(lines).block(
+            let widget = Paragraph::new(lines).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Cyan))
                     .title(" Repo Archiver "),
             );
 
-            f.render_widget(picker, picker_area);
+            f.render_widget(widget, picker_area);
         })?;
 
         if let Event::Key(key) = event::read()? {
@@ -377,17 +449,15 @@ fn run_age_picker<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<Age>>
 
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
-                KeyCode::Up | KeyCode::Char('k') => {
-                    selected = selected.saturating_sub(1);
+                KeyCode::Up | KeyCode::Char('k') => picker.increment(),
+                KeyCode::Down | KeyCode::Char('j') => picker.decrement(),
+                KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Char('h' | 'l')
+                | KeyCode::Tab => {
+                    picker.toggle_unit();
                 }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if selected < Age::PRESETS.len() - 1 {
-                        selected += 1;
-                    }
-                }
-                KeyCode::Enter => {
-                    return Ok(Some(Age::PRESETS[selected]));
-                }
+                KeyCode::Enter => return Ok(Some(picker.to_age())),
                 _ => {}
             }
         }
