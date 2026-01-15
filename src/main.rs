@@ -737,7 +737,7 @@ fn render_modal(f: &mut Frame, app: &App) {
 
     // Center the modal
     let modal_width = 50;
-    let modal_height = 7;
+    let modal_height = 9;
     let modal_area = Rect {
         x: area.width.saturating_sub(modal_width) / 2,
         y: area.height.saturating_sub(modal_height) / 2,
@@ -750,24 +750,23 @@ fn render_modal(f: &mut Frame, app: &App) {
 
     let count = app.selected_count();
 
-    // Build button spans with highlighting
-    let cancel_style = if app.modal_button == 0 {
-        Style::default().fg(Color::Black).bg(Color::White)
+    // Build button styles
+    let (cancel_style, proceed_style) = if app.modal_button == 0 {
+        (
+            Style::default().fg(Color::Black).bg(Color::White).bold(),
+            Style::default().fg(Color::DarkGray),
+        )
     } else {
-        Style::default().fg(Color::Gray)
-    };
-    let continue_style = if app.modal_button == 1 {
-        Style::default().fg(Color::Black).bg(Color::White)
-    } else {
-        Style::default().fg(Color::Gray)
+        (
+            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::Black).bg(Color::Green).bold(),
+        )
     };
 
     let buttons = Line::from(vec![
-        Span::raw("  "),
-        Span::styled(" Cancel ", cancel_style),
-        Span::raw("    "),
-        Span::styled(" Continue ", continue_style),
-        Span::raw("  "),
+        Span::styled(" [ CANCEL ] ", cancel_style),
+        Span::raw("     "),
+        Span::styled(" [ PROCEED ] ", proceed_style),
     ]);
 
     let text = vec![
@@ -777,6 +776,7 @@ fn render_modal(f: &mut Frame, app: &App) {
             count,
             if count == 1 { "" } else { "s" }
         ))
+        .style(Style::default().bold())
         .centered(),
         Line::from(""),
         Line::from(if app.dry_run {
@@ -792,6 +792,10 @@ fn render_modal(f: &mut Frame, app: &App) {
         .centered(),
         Line::from(""),
         buttons.centered(),
+        Line::from(""),
+        Line::from("←/→: Switch | Enter: Select | Esc: Cancel")
+            .style(Style::default().fg(Color::DarkGray))
+            .centered(),
     ];
 
     let modal = Paragraph::new(text).block(
