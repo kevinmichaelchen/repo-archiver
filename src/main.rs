@@ -59,6 +59,7 @@ struct App {
     dry_run: bool,
     spinner_tick: usize,
     last_tick: Instant,
+    modal_button: usize, // 0 = Cancel, 1 = Continue
 }
 
 #[derive(PartialEq)]
@@ -87,6 +88,7 @@ impl App {
             dry_run,
             spinner_tick: 0,
             last_tick: Instant::now(),
+            modal_button: 1, // Default to "Continue"
         }
     }
 
@@ -289,7 +291,25 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
                         _ => {}
                     },
                     Mode::ConfirmModal => match key.code {
-                        KeyCode::Char('y') | KeyCode::Enter => {
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            app.modal_button = 0;
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            app.modal_button = 1;
+                        }
+                        KeyCode::Tab => {
+                            app.modal_button = 1 - app.modal_button;
+                        }
+                        KeyCode::Enter => {
+                            if app.modal_button == 1 {
+                                app.mark_selected_as_pending();
+                                app.mode = Mode::Archiving;
+                                start_archiving(app, tx.clone());
+                            } else {
+                                app.mode = Mode::Selecting;
+                            }
+                        }
+                        KeyCode::Char('y') => {
                             app.mark_selected_as_pending();
                             app.mode = Mode::Archiving;
                             start_archiving(app, tx.clone());
@@ -300,7 +320,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
                         _ => {}
                     },
                     Mode::Archiving => match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Down | KeyCode::Char('j') => app.next(),
+                        KeyCode::Up | KeyCode::Char('k') => app.previous(),
                         _ => {}
                     },
                     Mode::Done => match key.code {
@@ -473,8 +495,8 @@ fn ui(f: &mut Frame, app: &mut App) {
         Mode::Selecting => {
             "↑/↓ or j/k: Navigate | Space/Tab: Toggle | Enter: Confirm | q: Quit"
         }
-        Mode::ConfirmModal => "y: Confirm | n: Cancel",
-        Mode::Archiving => "Archiving in progress... (q to quit)",
+        Mode::ConfirmModal => "←/→ or Tab: Switch | Enter: Select | Esc: Cancel",
+        Mode::Archiving => "↑/↓ or j/k: Scroll | q: Quit",
         Mode::Done => "All done! Press q or Enter to exit.",
     };
 
@@ -506,6 +528,27 @@ fn render_modal(f: &mut Frame, app: &App) {
     f.render_widget(Clear, modal_area);
 
     let count = app.selected_count();
+
+    // Build button spans with highlighting
+    let cancel_style = if app.modal_button == 0 {
+        Style::default().fg(Color::Black).bg(Color::White)
+    } else {
+        Style::default().fg(Color::Gray)
+    };
+    let continue_style = if app.modal_button == 1 {
+        Style::default().fg(Color::Black).bg(Color::White)
+    } else {
+        Style::default().fg(Color::Gray)
+    };
+
+    let buttons = Line::from(vec![
+        Span::raw("  "),
+        Span::styled(" Cancel ", cancel_style),
+        Span::raw("    "),
+        Span::styled(" Continue ", continue_style),
+        Span::raw("  "),
+    ]);
+
     let text = vec![
         Line::from(""),
         Line::from(format!(
@@ -527,9 +570,7 @@ fn render_modal(f: &mut Frame, app: &App) {
         }))
         .centered(),
         Line::from(""),
-        Line::from("[y] Yes  [n] No")
-            .style(Style::default().fg(Color::Gray))
-            .centered(),
+        buttons.centered(),
     ];
 
     let modal = Paragraph::new(text).block(

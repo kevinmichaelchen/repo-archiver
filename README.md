@@ -20,14 +20,28 @@ cargo run -- --years 5
 
 ## Controls
 
+### Selection mode
 | Key | Action |
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
 | `Space` / `Tab` | Toggle selection |
-| `Enter` | Confirm selection |
-| `y` | Confirm archive (in modal) |
-| `n` / `Esc` | Cancel |
+| `Enter` | Open confirmation modal |
+| `q` | Quit |
+
+### Confirmation modal
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Switch between Cancel/Continue |
+| `Tab` | Toggle button |
+| `Enter` | Select highlighted button |
+| `Esc` | Cancel |
+
+### During archiving
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Scroll up |
+| `↓` / `j` | Scroll down |
 | `q` | Quit |
 
 ## Dependencies
