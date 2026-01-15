@@ -166,7 +166,7 @@ enum ArchiveResult {
 
 fn fetch_repos(years: u32) -> Result<Vec<Repo>> {
     let cutoff_year = Utc::now().format("%Y").to_string().parse::<i32>()? - years as i32;
-    let cutoff_date = format!("{}-01-01", cutoff_year);
+    let cutoff_date = format!("{cutoff_year}-01-01");
 
     let output = Command::new("gh")
         .args([

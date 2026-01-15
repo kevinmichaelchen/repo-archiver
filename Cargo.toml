@@ -4,6 +4,18 @@ version = "0.1.0"
 edition = "2021"
 description = "Interactive CLI to archive old GitHub repos"
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+too_many_lines = "allow"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
