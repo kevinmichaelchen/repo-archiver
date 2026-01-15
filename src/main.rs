@@ -28,8 +28,9 @@ struct Args {
     dry_run: bool,
 
     /// Archive repos older than this age (e.g., "8y" for 8 years, "6m" for 6 months)
-    #[arg(long, default_value = "8y")]
-    age: String,
+    /// If not provided, an interactive picker will be shown.
+    #[arg(long)]
+    age: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -73,6 +74,15 @@ impl Age {
             Self::Months(m) => format!("{m} month{}", if m == 1 { "" } else { "s" }),
         }
     }
+
+    const PRESETS: &[Age] = &[
+        Age::Months(3),
+        Age::Months(6),
+        Age::Years(1),
+        Age::Years(2),
+        Age::Years(5),
+        Age::Years(8),
+    ];
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -249,7 +259,33 @@ fn fetch_repos(age: Age) -> Result<Vec<Repo>> {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let age = Age::parse(&args.age)?;
+
+    // Parse age from CLI or show interactive picker
+    let age = if let Some(age_str) = &args.age {
+        Age::parse(age_str)?
+    } else {
+        // Launch TUI for age selection
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+
+        let age_result = run_age_picker(&mut terminal);
+
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+
+        match age_result? {
+            Some(age) => age,
+            None => return Ok(()), // User cancelled
+        }
+    };
 
     println!("Finding repos older than {}...", age.display());
     let repos = fetch_repos(age)?;
@@ -283,6 +319,79 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_age_picker<B: Backend>(terminal: &mut Terminal<B>) -> Result<Option<Age>> {
+    let mut selected: usize = 3; // Default to 2 years
+
+    loop {
+        terminal.draw(|f| {
+            let area = f.area();
+
+            // Center the picker
+            let picker_width = 40;
+            let picker_height = (Age::PRESETS.len() + 4) as u16;
+            let picker_area = Rect {
+                x: area.width.saturating_sub(picker_width) / 2,
+                y: area.height.saturating_sub(picker_height) / 2,
+                width: picker_width.min(area.width),
+                height: picker_height.min(area.height),
+            };
+
+            let mut lines = vec![
+                Line::from("Select minimum repo age:").centered(),
+                Line::from(""),
+            ];
+
+            for (i, age) in Age::PRESETS.iter().enumerate() {
+                let prefix = if i == selected { "▶ " } else { "  " };
+                let style = if i == selected {
+                    Style::default().fg(Color::Cyan).bold()
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+                lines.push(Line::from(format!("{prefix}{}", age.display())).style(style).centered());
+            }
+
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from("↑/↓: Select | Enter: Confirm | q: Quit")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .centered(),
+            );
+
+            let picker = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Repo Archiver "),
+            );
+
+            f.render_widget(picker, picker_area);
+        })?;
+
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if selected < Age::PRESETS.len() - 1 {
+                        selected += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    return Ok(Some(Age::PRESETS[selected]));
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {

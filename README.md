@@ -8,20 +8,28 @@ Interactive TUI to archive old GitHub repos, built with Rust and [Ratatui](https
 # Build
 cargo build --release
 
-# Dry run - see what would be archived (repos older than 8 years)
-cargo run -- --dry-run
-
-# Archive repos older than 8 years (default)
+# Interactive mode - prompts for age selection
 cargo run
 
-# Archive repos older than 5 years
+# Dry run - prompts for age, then shows what would be archived
+cargo run -- --dry-run
+
+# Skip age picker by specifying directly (5 years)
 cargo run -- --age 5y
 
-# Archive repos older than 6 months
+# Skip age picker by specifying directly (6 months)
 cargo run -- --age 6m
 ```
 
 ## Controls
+
+### Age picker (if --age not provided)
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move up |
+| `↓` / `j` | Move down |
+| `Enter` | Confirm selection |
+| `q` / `Esc` | Quit |
 
 ### Selection mode
 | Key | Action |
