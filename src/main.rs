@@ -269,6 +269,35 @@ impl App {
                 || matches!(status, RepoStatus::Done | RepoStatus::Failed(_))
         })
     }
+
+    fn remove_archived_and_reset(&mut self) {
+        // Keep only repos that were not successfully archived
+        let mut new_repos = Vec::new();
+        let mut new_statuses = Vec::new();
+        let mut new_selected = Vec::new();
+
+        for i in 0..self.repos.len() {
+            if self.statuses[i] != RepoStatus::Done {
+                new_repos.push(self.repos[i].clone());
+                new_statuses.push(RepoStatus::Idle);
+                new_selected.push(false);
+            }
+        }
+
+        self.repos = new_repos;
+        self.statuses = new_statuses;
+        self.selected = new_selected;
+
+        // Reset table selection
+        if self.repos.is_empty() {
+            self.state.select(None);
+        } else {
+            self.state.select(Some(0));
+        }
+
+        // Reset modal button
+        self.modal_button = 1;
+    }
 }
 
 #[derive(Debug)]
@@ -485,7 +514,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
                 }
             }
             if app.is_all_done() {
-                app.mode = Mode::Done;
+                // Remove successfully archived repos and reset
+                app.remove_archived_and_reset();
+
+                if app.repos.is_empty() {
+                    app.mode = Mode::Done;
+                } else {
+                    // Go back to selection mode to archive more
+                    app.mode = Mode::Selecting;
+                }
             }
         }
 
@@ -633,7 +670,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                 total
             )
         }
-        Mode::Done => " Done! ".to_string(),
+        Mode::Done => " All repos archived! ".to_string(),
     };
     let title_block = Paragraph::new(title)
         .style(Style::default().fg(Color::Cyan).bold())
